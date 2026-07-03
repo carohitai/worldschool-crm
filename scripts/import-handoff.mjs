@@ -74,9 +74,14 @@ async function insertBatched(table, rows, select) {
 }
 
 async function main() {
+  const email = process.env.CRM_ADMIN_EMAIL;
+  const password = process.env.CRM_ADMIN_PASSWORD;
+  if (!email || !password) {
+    throw new Error("Set CRM_ADMIN_EMAIL and CRM_ADMIN_PASSWORD env vars.");
+  }
   const { error: authErr } = await supabase.auth.signInWithPassword({
-    email: "admin@worldschool.demo",
-    password: "Demo@1234",
+    email,
+    password,
   });
   if (authErr) throw new Error(`auth: ${authErr.message}`);
 
