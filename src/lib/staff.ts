@@ -1,11 +1,13 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Staff } from "@/lib/types";
 
 /**
  * Returns the staff record for the logged-in user. On first login the
  * auth account is linked to the staff row that matches the user's email.
+ * Wrapped in cache() so layout + page share one lookup per request.
  */
-export async function getCurrentStaff(): Promise<Staff | null> {
+export const getCurrentStaff = cache(async (): Promise<Staff | null> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,7 +32,7 @@ export async function getCurrentStaff(): Promise<Staff | null> {
     if (linked) return linked as Staff;
   }
   return null;
-}
+});
 
 /** Today's date in the school's timezone (IST). */
 export function todayIST(): string {
