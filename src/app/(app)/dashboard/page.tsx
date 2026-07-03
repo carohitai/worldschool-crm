@@ -30,7 +30,7 @@ const SENTIMENT_BADGE: Record<CallSentiment, string> = {
 
 export default async function DashboardPage() {
   const staff = await getCurrentStaff();
-  if (!staff) redirect("/login");
+  if (!staff) redirect("/unregistered");
   if (staff.role !== "admin" && staff.role !== "coordinator") {
     redirect("/today");
   }

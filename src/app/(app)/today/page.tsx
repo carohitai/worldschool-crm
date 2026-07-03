@@ -28,7 +28,7 @@ const STATUS_STYLES: Record<CallStatus, string> = {
 
 export default async function TodayPage() {
   const staff = await getCurrentStaff();
-  if (!staff) redirect("/login");
+  if (!staff) redirect("/unregistered");
   const supabase = await createClient();
   const today = todayIST();
 

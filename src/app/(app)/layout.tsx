@@ -10,7 +10,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const staff = await getCurrentStaff();
-  if (!staff) redirect("/login");
+  if (!staff) redirect("/unregistered");
 
   const isLeadership = staff.role === "admin" || staff.role === "coordinator";
 
