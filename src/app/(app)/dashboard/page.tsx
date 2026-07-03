@@ -38,8 +38,18 @@ export default async function DashboardPage() {
   const today = todayIST();
   const weekday = weekdayIST();
 
-  const [targetsRes, logsRes, familiesRes, contactedRes, actionsRes, planRes, tbdRes] =
-    await Promise.all([
+  const [
+    targetsRes,
+    logsRes,
+    familiesRes,
+    contactedRes,
+    actionsRes,
+    planRes,
+    tbdRes,
+    studentsRes,
+    classesRes,
+    staffRes,
+  ] = await Promise.all([
       supabase
         .from("call_targets")
         .select("staff_id, status, staff(name)")
@@ -66,6 +76,9 @@ export default async function DashboardPage() {
         .from("call_plan")
         .select("student_id")
         .is("staff_id", null),
+      supabase.from("students").select("id", { count: "exact", head: true }),
+      supabase.from("classes").select("name"),
+      supabase.from("staff").select("id", { count: "exact", head: true }),
     ]);
 
   const targets = (targetsRes.data ?? []) as unknown as TargetAgg[];
@@ -79,6 +92,12 @@ export default async function DashboardPage() {
   const tbdStudents = new Set(
     (tbdRes.data ?? []).map((r) => r.student_id)
   ).size;
+  const totalStudents = studentsRes.count ?? 0;
+  const totalDivisions = (classesRes.data ?? []).length;
+  const totalStandards = new Set(
+    (classesRes.data ?? []).map((c) => c.name)
+  ).size;
+  const totalStaff = staffRes.count ?? 0;
 
   const byStaff = new Map<string, { name: string; total: number; done: number }>();
   for (const t of targets) {
@@ -116,6 +135,18 @@ export default async function DashboardPage() {
           the NUR / Jr.Kg / Sr.Kg class teachers to include them in the plan.
         </p>
       )}
+
+      <section>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          School data in the system
+        </h2>
+        <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatCard label="Total students" value={totalStudents.toLocaleString("en-IN")} />
+          <StatCard label="Classes" value={String(totalStandards)} />
+          <StatCard label="Divisions" value={String(totalDivisions)} />
+          <StatCard label="Staff" value={String(totalStaff)} />
+        </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard

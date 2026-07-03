@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MicrosoftButton } from "./microsoft-button";
+
+const SSO_ENABLED = process.env.NEXT_PUBLIC_MICROSOFT_SSO === "1";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -73,11 +76,25 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="w-full rounded-md bg-[#1A2B5E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#24397a] disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        {SSO_ENABLED && (
+          <>
+            <div className="my-5 flex items-center gap-3 text-xs text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              or
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+            <MicrosoftButton />
+            <p className="mt-2 text-center text-xs text-slate-400">
+              Use your school Microsoft 365 account
+            </p>
+          </>
+        )}
       </div>
     </main>
   );
