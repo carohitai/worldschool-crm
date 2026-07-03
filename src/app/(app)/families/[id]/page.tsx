@@ -39,6 +39,16 @@ interface ActionRow {
   owner: { name: string } | null;
 }
 
+interface MessageRow {
+  id: string;
+  created_at: string;
+  channel: string;
+  template: string | null;
+  status: string;
+  error: string | null;
+  staff: { name: string } | null;
+}
+
 export default async function FamilyPage({
   params,
 }: {
@@ -47,7 +57,7 @@ export default async function FamilyPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [familyRes, logsRes, actionsRes] = await Promise.all([
+  const [familyRes, logsRes, actionsRes, messagesRes] = await Promise.all([
     supabase
       .from("families")
       .select(
@@ -67,12 +77,18 @@ export default async function FamilyPage({
       .select("id, description, status, due_date, owner:staff(name)")
       .eq("family_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("messages")
+      .select("id, created_at, channel, template, status, error, staff(name)")
+      .eq("family_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   const family = familyRes.data as unknown as FamilyDetail | null;
   if (!family) notFound();
   const logs = (logsRes.data ?? []) as unknown as LogRow[];
   const actions = (actionsRes.data ?? []) as unknown as ActionRow[];
+  const messages = (messagesRes.data ?? []) as unknown as MessageRow[];
 
   return (
     <div className="space-y-8">
@@ -143,6 +159,51 @@ export default async function FamilyPage({
                   >
                     {a.status}
                   </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {messages.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900">
+            WhatsApp messages
+          </h2>
+          <ul className="mt-2 space-y-2">
+            {messages.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 text-sm shadow-sm"
+              >
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                  WhatsApp
+                </span>
+                <span className="text-slate-700">
+                  {m.template ?? "message"}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    m.status === "sent"
+                      ? "bg-green-100 text-green-800"
+                      : m.status === "failed"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {m.status}
+                </span>
+                {m.error && (
+                  <span className="text-xs text-red-500">{m.error}</span>
+                )}
+                <span className="ml-auto text-xs text-slate-500">
+                  {m.staff?.name} ·{" "}
+                  {new Date(m.created_at).toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                 </span>
               </li>
             ))}

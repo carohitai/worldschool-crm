@@ -1,0 +1,62 @@
+/**
+ * Yeastar P-Series (Linkus) OpenAPI — click-to-call.
+ *
+ * Env vars (server-only):
+ *   YEASTAR_API_URL       e.g. https://<pbx-domain>/openapi/v1.0
+ *   YEASTAR_CLIENT_ID     OpenAPI client ID (PBX → Integrations → OpenAPI)
+ *   YEASTAR_CLIENT_SECRET OpenAPI client secret
+ *
+ * Flow: get_token → POST /call/dial { caller: <staff extension>, callee: <parent number> }.
+ * The teacher's Linkus/desk phone rings first; on answer the PBX dials the parent.
+ */
+
+const BASE = process.env.YEASTAR_API_URL;
+const CLIENT_ID = process.env.YEASTAR_CLIENT_ID;
+const CLIENT_SECRET = process.env.YEASTAR_CLIENT_SECRET;
+
+export function linkusConfigured(): boolean {
+  return Boolean(BASE && CLIENT_ID && CLIENT_SECRET);
+}
+
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.token;
+  const res = await fetch(`${BASE}/get_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: CLIENT_ID, password: CLIENT_SECRET }),
+    cache: "no-store",
+  });
+  const data = await res.json();
+  if (data.errcode !== 0 || !data.access_token) {
+    throw new Error(`Linkus token failed: ${data.errmsg ?? res.status}`);
+  }
+  cachedToken = {
+    token: data.access_token,
+    // access_token_expire_time is in seconds; refresh 60s early
+    expiresAt: Date.now() + (Number(data.access_token_expire_time ?? 1800) - 60) * 1000,
+  };
+  return cachedToken.token;
+}
+
+export async function dial(
+  extension: string,
+  number: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!linkusConfigured()) return { ok: false, error: "Linkus is not configured yet." };
+  try {
+    const token = await getToken();
+    const res = await fetch(`${BASE}/call/dial?access_token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ caller: extension, callee: number.replace(/[^\d+]/g, "") }),
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (data.errcode !== 0) return { ok: false, error: data.errmsg ?? "Dial failed" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Dial failed" };
+  }
+}

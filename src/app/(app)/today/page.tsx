@@ -4,6 +4,9 @@ import { getCurrentStaff, todayIST } from "@/lib/staff";
 import { DISPOSITION_LABELS, type CallStatus } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 import { GenerateButton } from "./generate-button";
+import { DialButton } from "./dial-button";
+
+const LINKUS_ENABLED = process.env.NEXT_PUBLIC_LINKUS === "1";
 
 interface TargetRow {
   id: string;
@@ -94,6 +97,9 @@ export default async function TodayPage() {
                   >
                     📞 {t.family.primary_phone}
                   </a>
+                )}
+                {LINKUS_ENABLED && t.family && t.status === "pending" && (
+                  <DialButton familyId={t.family.id} />
                 )}
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLES[t.status]}`}

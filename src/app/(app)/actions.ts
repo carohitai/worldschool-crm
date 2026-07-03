@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentStaff, todayIST, weekdayIST } from "@/lib/staff";
+import { dial, linkusConfigured } from "@/lib/integrations/linkus";
+import {
+  nextelConfigured,
+  sendMissedCallMessage,
+} from "@/lib/integrations/nextel";
 import type { CallStatus } from "@/lib/types";
 
 export async function signOut() {
@@ -206,6 +211,37 @@ export async function assignAllTodayTargets() {
   };
 }
 
+/**
+ * Click-to-call via the school's Yeastar PBX: rings the teacher's Linkus
+ * extension first, then connects the parent. Requires YEASTAR_* env vars.
+ */
+export async function dialViaLinkus(familyId: string) {
+  const staff = await getCurrentStaff();
+  if (!staff) throw new Error("No staff record for this login.");
+  if (!linkusConfigured()) {
+    return { ok: false, message: "Linkus is not connected yet." };
+  }
+  if (!staff.linkus_extension) {
+    return {
+      ok: false,
+      message: "No Linkus extension is set on your staff record — ask the office to add it.",
+    };
+  }
+  const supabase = await createClient();
+  const { data: family } = await supabase
+    .from("families")
+    .select("primary_phone")
+    .eq("id", familyId)
+    .maybeSingle();
+  if (!family?.primary_phone) {
+    return { ok: false, message: "This family has no phone number." };
+  }
+  const result = await dial(staff.linkus_extension, family.primary_phone);
+  return result.ok
+    ? { ok: true, message: "Ringing your Linkus — answer to connect the parent." }
+    : { ok: false, message: result.error ?? "Dial failed." };
+}
+
 export async function logCall(formData: FormData) {
   const staff = await getCurrentStaff();
   if (!staff) throw new Error("No staff record for this login.");
@@ -250,6 +286,36 @@ export async function logCall(formData: FormData) {
       description: actionItem,
       owner_staff_id: staff.id,
     });
+  }
+
+  // Parent not reached → WhatsApp "we tried to contact you" via Nextel
+  // (official template, opted-in families only). Failures are recorded,
+  // never block the call log.
+  if (disposition !== "reached" && nextelConfigured()) {
+    const { data: family } = await supabase
+      .from("families")
+      .select(
+        "whatsapp_number, primary_phone, whatsapp_opt_in, students(name)"
+      )
+      .eq("id", familyId)
+      .maybeSingle();
+    const toPhone = family?.whatsapp_number || family?.primary_phone;
+    if (family?.whatsapp_opt_in && toPhone) {
+      const studentName =
+        (family.students as { name: string }[] | null)?.[0]?.name ?? "your ward";
+      const result = await sendMissedCallMessage(toPhone, studentName, staff.name);
+      await supabase.from("messages").insert({
+        family_id: familyId,
+        call_log_id: log.id,
+        staff_id: staff.id,
+        channel: "whatsapp",
+        to_phone: toPhone,
+        template: result.template,
+        status: result.ok ? "sent" : "failed",
+        provider_message_id: result.messageId ?? null,
+        error: result.error ?? null,
+      });
+    }
   }
 
   revalidatePath("/today");
