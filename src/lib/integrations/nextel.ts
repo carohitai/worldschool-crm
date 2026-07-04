@@ -51,14 +51,11 @@ export async function sendMissedCallMessage(
     });
     const data = await res.json().catch(() => ({} as Record<string, unknown>));
     // Nextel returns HTTP 200 even on failure, with the real outcome in
-    // `status` (numeric, e.g. {"status":500,"statusText":"Mobile not correct!"}).
+    // `status` — sometimes a number ({"status":500,...}), sometimes a string
+    // ({"status":"202","statusText":"Accepted","messageId":"wamid..."}).
+    const statusNum = Number(data.status);
     const failed =
-      !res.ok ||
-      (typeof data.status === "number" && data.status >= 400) ||
-      (typeof data.status === "string" &&
-        !["success", "sent", "queued", "ok", "200"].includes(
-          data.status.toLowerCase()
-        ));
+      !res.ok || (Number.isFinite(statusNum) && statusNum >= 400);
     if (failed) {
       return {
         ok: false,
