@@ -2,47 +2,24 @@
  * Nextel WhatsApp Business API — outbound template messages.
  *
  * Env vars (server-only):
- *   NEXTEL_API_URL        message-send endpoint from the Nextel dashboard
- *   NEXTEL_API_KEY        API key / bearer token
- *   NEXTEL_TEMPLATE_NAME  approved template, default 'parent_connect_missed_call'
+ *   NEXTEL_API_URL      full send_template endpoint incl. the account token path,
+ *                       e.g. https://api.nextel.io/API_V2/Whatsapp/send_template/XXXX
+ *   NEXTEL_API_KEY      Bearer API key from the Nextel dashboard
+ *   NEXTEL_TEMPLATE_ID  approved template id (default: parent_connect)
  *
- * The default payload follows the standard WhatsApp Cloud-API template shape
- * most BSPs (including Nextel) accept. If Nextel's exact schema differs, only
- * buildPayload() needs adjusting once we have their API docs/credentials.
+ * Request shape (per Nextel docs):
+ *   POST { type: "buttonTemplate", templateId, templateLanguage: "en",
+ *          sender_phone: "91XXXXXXXXXX", templateArgs: [arg1, arg2] }
  *
- * Template expectation (2 body variables):
- *   {{1}} = student name, {{2}} = teacher name
- *   e.g. "Dear parent, {{2}} from The World School tried calling you today
- *         regarding your ward {{1}} under our Parent Connect programme.
- *         We will try again soon — you may also call the school office."
+ * Template "parent_connect" args: [0] = student name, [1] = teacher name.
  */
 
 const URL = process.env.NEXTEL_API_URL;
 const KEY = process.env.NEXTEL_API_KEY;
-const TEMPLATE = process.env.NEXTEL_TEMPLATE_NAME ?? "parent_connect_missed_call";
+const TEMPLATE_ID = process.env.NEXTEL_TEMPLATE_ID ?? "parent_connect";
 
 export function nextelConfigured(): boolean {
   return Boolean(URL && KEY);
-}
-
-function buildPayload(to: string, studentName: string, teacherName: string) {
-  return {
-    to,
-    type: "template",
-    template: {
-      name: TEMPLATE,
-      language: { code: "en" },
-      components: [
-        {
-          type: "body",
-          parameters: [
-            { type: "text", text: studentName },
-            { type: "text", text: teacherName },
-          ],
-        },
-      ],
-    },
-  };
 }
 
 export async function sendMissedCallMessage(
@@ -51,9 +28,11 @@ export async function sendMissedCallMessage(
   teacherName: string
 ): Promise<{ ok: boolean; messageId?: string; error?: string; template: string }> {
   if (!nextelConfigured()) {
-    return { ok: false, error: "Nextel is not configured yet.", template: TEMPLATE };
+    return { ok: false, error: "Nextel is not configured yet.", template: TEMPLATE_ID };
   }
-  const to = toPhone.replace(/[^\d]/g, "").replace(/^(?!91)/, "91"); // E.164 India, no +
+  // 91XXXXXXXXXX format: digits only, ensure the 91 country prefix
+  const digits = toPhone.replace(/[^\d]/g, "");
+  const phone = digits.startsWith("91") && digits.length > 10 ? digits : `91${digits.slice(-10)}`;
   try {
     const res = await fetch(URL!, {
       method: "POST",
@@ -61,27 +40,44 @@ export async function sendMissedCallMessage(
         "Content-Type": "application/json",
         Authorization: `Bearer ${KEY}`,
       },
-      body: JSON.stringify(buildPayload(to, studentName, teacherName)),
+      body: JSON.stringify({
+        type: "buttonTemplate",
+        templateId: TEMPLATE_ID,
+        templateLanguage: "en",
+        sender_phone: phone,
+        templateArgs: [studentName, teacherName],
+      }),
       cache: "no-store",
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    const failed =
+      !res.ok ||
+      (typeof data.status === "string" &&
+        !["success", "sent", "queued", "ok"].includes(data.status.toLowerCase()));
+    if (failed) {
       return {
         ok: false,
-        error: data?.error?.message ?? data?.message ?? `HTTP ${res.status}`,
-        template: TEMPLATE,
+        error:
+          (data.message as string) ??
+          (data.error as string) ??
+          `HTTP ${res.status}`,
+        template: TEMPLATE_ID,
       };
     }
     return {
       ok: true,
-      messageId: data?.messages?.[0]?.id ?? data?.id ?? undefined,
-      template: TEMPLATE,
+      messageId:
+        (data.messageId as string) ??
+        (data.message_id as string) ??
+        (data.id as string) ??
+        undefined,
+      template: TEMPLATE_ID,
     };
   } catch (e) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Send failed",
-      template: TEMPLATE,
+      template: TEMPLATE_ID,
     };
   }
 }
