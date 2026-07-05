@@ -21,11 +21,12 @@ export function DialButton({ familyId }: { familyId: string }) {
           })
         }
         disabled={isPending}
-        className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-50"
+        className="dc-btn-primary disabled:opacity-50"
+        style={{ background: "var(--olive-600)" }}
       >
         {isPending ? "Dialling…" : "☎ Call via Linkus"}
       </button>
-      {message && <span className="text-xs text-slate-500">{message}</span>}
+      {message && <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>{message}</span>}
     </span>
   );
 }

@@ -21,11 +21,11 @@ export function GenerateButton() {
           })
         }
         disabled={isPending}
-        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+        className="dc-btn-accent disabled:opacity-50"
       >
         {isPending ? "Generating…" : "Generate today's call list"}
       </button>
-      {message && <span className="text-sm text-slate-600">{message}</span>}
+      {message && <span className="text-sm" style={{ color: "var(--fg-subtle)" }}>{message}</span>}
     </div>
   );
 }

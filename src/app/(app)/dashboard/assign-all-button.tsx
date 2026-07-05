@@ -21,11 +21,11 @@ export function AssignAllButton() {
           })
         }
         disabled={isPending}
-        className="rounded-md bg-[#1A2B5E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#24397a] disabled:opacity-50"
+        className="dc-btn-accent disabled:opacity-50"
       >
-        {isPending ? "Assigning…" : "Assign today's plan to all teachers"}
+        {isPending ? "Assigning…" : "Assign Today's Plan to All Teachers"}
       </button>
-      {message && <span className="text-sm text-slate-600">{message}</span>}
+      {message && <span className="text-sm" style={{ color: "var(--fg-subtle)" }}>{message}</span>}
     </div>
   );
 }

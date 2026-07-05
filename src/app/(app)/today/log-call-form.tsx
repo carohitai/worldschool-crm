@@ -4,6 +4,18 @@ import { useState, useTransition } from "react";
 import { logCall } from "../actions";
 import { CALL_TOPICS } from "@/lib/types";
 
+const DISPOSITIONS = [
+  { value: "reached", label: "Answered" },
+  { value: "not_reached", label: "Not answered" },
+  { value: "callback", label: "Callback later" },
+] as const;
+
+const SENTIMENTS = [
+  { value: "positive", label: "Positive" },
+  { value: "neutral", label: "Neutral" },
+  { value: "negative", label: "Negative" },
+] as const;
+
 export function LogCallForm({
   targetId,
   familyId,
@@ -12,25 +24,29 @@ export function LogCallForm({
   familyId: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [disposition, setDisposition] = useState("reached");
+  const [sentiment, setSentiment] = useState("neutral");
+  const [topics, setTopics] = useState<string[]>([]);
+  const [summary, setSummary] = useState("");
+  const [duration, setDuration] = useState("");
+  const [actionItem, setActionItem] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-      >
-        Log call
-      </button>
-    );
-  }
-
-  function handleSubmit(formData: FormData) {
+  function save() {
     setError(null);
     startTransition(async () => {
       try {
-        await logCall(formData);
+        const fd = new FormData();
+        fd.set("target_id", targetId);
+        fd.set("family_id", familyId);
+        fd.set("disposition", disposition);
+        fd.set("sentiment", sentiment);
+        topics.forEach((t) => fd.append("topics", t));
+        fd.set("summary", summary);
+        fd.set("duration_min", duration);
+        fd.set("action_item", actionItem);
+        await logCall(fd);
         setOpen(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to log call");
@@ -38,125 +54,88 @@ export function LogCallForm({
     });
   }
 
+  const pill = (selected: boolean) => ({
+    background: selected ? "var(--teal-700)" : "var(--white)",
+    color: selected ? "var(--paper)" : "var(--fg-muted)",
+    borderColor: selected ? "var(--teal-700)" : "var(--rule)",
+  });
+
   return (
-    <form
-      action={handleSubmit}
-      className="mt-3 w-full space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
-    >
-      <input type="hidden" name="target_id" value={targetId} />
-      <input type="hidden" name="family_id" value={familyId} />
+    <>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="dc-btn-primary inline-flex items-center gap-2">
+        Log call
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 200ms" }}>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
 
-      <div>
-        <span className="block text-xs font-semibold uppercase text-slate-500">
-          Outcome
-        </span>
-        <div className="mt-1 flex gap-3 text-sm">
-          {(
-            [
-              ["reached", "Reached"],
-              ["not_reached", "Not reached"],
-              ["callback", "Callback later"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                name="disposition"
-                value={value}
-                required
-                defaultChecked={value === "reached"}
+      {open && (
+        <div className="mt-4 w-full basis-full" style={{ borderTop: "1px solid var(--rule)", paddingTop: 20 }}>
+          <div className="flex flex-col gap-4">
+            <div>
+              <p className="dc-thead mb-2" style={{ letterSpacing: "0.12em" }}>Disposition</p>
+              <div className="flex flex-wrap gap-2">
+                {DISPOSITIONS.map((d) => (
+                  <button key={d.value} type="button" onClick={() => setDisposition(d.value)} className="dc-pill-option" style={pill(disposition === d.value)}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="dc-thead mb-2" style={{ letterSpacing: "0.12em" }}>Parent sentiment</p>
+              <div className="flex flex-wrap gap-2">
+                {SENTIMENTS.map((s) => (
+                  <button key={s.value} type="button" onClick={() => setSentiment(s.value)} className="dc-pill-option" style={pill(sentiment === s.value)}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="dc-thead mb-2" style={{ letterSpacing: "0.12em" }}>Topics discussed</p>
+              <div className="flex flex-wrap gap-2">
+                {CALL_TOPICS.map((t) => {
+                  const sel = topics.includes(t);
+                  return (
+                    <button key={t} type="button" onClick={() => setTopics((prev) => sel ? prev.filter((x) => x !== t) : [...prev, t])} className="dc-pill-option" style={pill(sel)}>
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p className="dc-thead mb-2" style={{ letterSpacing: "0.12em" }}>Summary — parent&apos;s comment</p>
+              <textarea
+                rows={3}
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                placeholder="What did the parent say?"
+                className="w-full rounded-lg px-3 py-2.5 text-sm leading-normal"
+                style={{ border: "1px solid var(--rule)", background: "var(--paper)", color: "var(--fg)", resize: "vertical" }}
               />
-              {label}
-            </label>
-          ))}
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="text-sm">
+                <span className="dc-thead mb-2 block" style={{ letterSpacing: "0.12em" }}>Duration (min)</span>
+                <input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} className="w-24 rounded-lg px-2.5 py-1.5" style={{ border: "1px solid var(--rule)", background: "var(--paper)" }} />
+              </label>
+              <label className="flex-1 text-sm" style={{ minWidth: 220 }}>
+                <span className="dc-thead mb-2 block" style={{ letterSpacing: "0.12em" }}>Action item (optional)</span>
+                <input type="text" value={actionItem} onChange={(e) => setActionItem(e.target.value)} placeholder="e.g. Share revision worksheets by Friday" className="w-full rounded-lg px-2.5 py-1.5" style={{ border: "1px solid var(--rule)", background: "var(--paper)" }} />
+              </label>
+            </div>
+            {error && <p className="text-sm" style={{ color: "var(--clay-600)" }}>{error}</p>}
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setOpen(false)} className="dc-btn-ghost">Cancel</button>
+              <button type="button" onClick={save} disabled={isPending} className="dc-btn-accent disabled:opacity-50">
+                {isPending ? "Saving…" : "Save call log"}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div>
-        <span className="block text-xs font-semibold uppercase text-slate-500">
-          Topics discussed
-        </span>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {CALL_TOPICS.map((topic) => (
-            <label key={topic} className="flex items-center gap-1.5">
-              <input type="checkbox" name="topics" value={topic} />
-              {topic}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-        <label className="text-sm">
-          <span className="block text-xs font-semibold uppercase text-slate-500">
-            Parent sentiment
-          </span>
-          <select
-            name="sentiment"
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1"
-            defaultValue="neutral"
-          >
-            <option value="positive">Positive</option>
-            <option value="neutral">Neutral</option>
-            <option value="negative">Negative</option>
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="block text-xs font-semibold uppercase text-slate-500">
-            Duration (min)
-          </span>
-          <input
-            type="number"
-            name="duration_min"
-            min={0}
-            step={1}
-            className="mt-1 w-24 rounded-md border border-slate-300 px-2 py-1"
-          />
-        </label>
-      </div>
-
-      <label className="block text-sm">
-        <span className="block text-xs font-semibold uppercase text-slate-500">
-          Summary
-        </span>
-        <textarea
-          name="summary"
-          rows={2}
-          placeholder="What was discussed?"
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
-        />
-      </label>
-
-      <label className="block text-sm">
-        <span className="block text-xs font-semibold uppercase text-slate-500">
-          Action item (optional)
-        </span>
-        <input
-          type="text"
-          name="action_item"
-          placeholder="e.g. Share revision worksheets by Friday"
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
-        />
-      </label>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {isPending ? "Saving…" : "Save call"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+      )}
+    </>
   );
 }
