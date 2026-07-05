@@ -242,6 +242,39 @@ export async function dialViaLinkus(familyId: string) {
     : { ok: false, message: result.error ?? "Dial failed." };
 }
 
+/**
+ * Manual roster sync from the dashboard (admin/coordinator only) — pulls the
+ * students' Excel from OneDrive via Graph and reconciles the CRM.
+ */
+export async function syncRosterNow() {
+  const staff = await getCurrentStaff();
+  if (!staff) throw new Error("No staff record for this login.");
+  if (staff.role !== "admin" && staff.role !== "coordinator") {
+    throw new Error("Only coordinators or admins can sync the roster.");
+  }
+  const { downloadRoster } = await import("@/lib/integrations/graph");
+  const { syncRoster } = await import("@/lib/sync/roster");
+  const supabase = await createClient();
+
+  const buffer = await downloadRoster();
+  const result = await syncRoster(supabase, buffer, staff.name);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/families");
+  revalidatePath("/today");
+
+  if (!result.ok) return { ok: false, message: result.error ?? "Sync failed." };
+  return {
+    ok: true,
+    message:
+      `Synced ${result.rosterRows} roster rows — ` +
+      `${result.studentsAdded} added, ${result.studentsUpdated} updated, ` +
+      `${result.studentsDeactivated} marked left, ${result.phonesUpdated} phone changes` +
+      (result.skippedNoMobile ? `, ${result.skippedNoMobile} skipped (no mobile)` : "") +
+      ".",
+  };
+}
+
 export async function logCall(formData: FormData) {
   const staff = await getCurrentStaff();
   if (!staff) throw new Error("No staff record for this login.");

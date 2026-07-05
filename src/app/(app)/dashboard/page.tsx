@@ -4,6 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentStaff, todayIST, weekdayIST } from "@/lib/staff";
 import type { CallSentiment } from "@/lib/types";
 import { AssignAllButton } from "./assign-all-button";
+import { SyncButton } from "./sync-button";
+
+interface SyncRun {
+  started_at: string;
+  triggered_by: string;
+  status: string;
+  roster_rows: number | null;
+  students_added: number;
+  students_updated: number;
+  students_deactivated: number;
+  phones_updated: number;
+  error: string | null;
+}
 
 interface TargetAgg {
   staff_id: string;
@@ -49,6 +62,7 @@ export default async function DashboardPage() {
     studentsRes,
     classesRes,
     staffRes,
+    syncRes,
   ] = await Promise.all([
       supabase
         .from("call_targets")
@@ -76,9 +90,20 @@ export default async function DashboardPage() {
         .from("call_plan")
         .select("student_id")
         .is("staff_id", null),
-      supabase.from("students").select("id", { count: "exact", head: true }),
+      supabase
+        .from("students")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active"),
       supabase.from("classes").select("name"),
       supabase.from("staff").select("id", { count: "exact", head: true }),
+      supabase
+        .from("sync_runs")
+        .select(
+          "started_at, triggered_by, status, roster_rows, students_added, students_updated, students_deactivated, phones_updated, error"
+        )
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
   const targets = (targetsRes.data ?? []) as unknown as TargetAgg[];
@@ -98,6 +123,7 @@ export default async function DashboardPage() {
     (classesRes.data ?? []).map((c) => c.name)
   ).size;
   const totalStaff = staffRes.count ?? 0;
+  const lastSync = syncRes.data as SyncRun | null;
 
   const byStaff = new Map<string, { name: string; total: number; done: number }>();
   for (const t of targets) {
@@ -145,6 +171,46 @@ export default async function DashboardPage() {
           <StatCard label="Classes" value={String(totalStandards)} />
           <StatCard label="Divisions" value={String(totalDivisions)} />
           <StatCard label="Staff" value={String(totalStaff)} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm">
+          <div className="text-sm text-slate-600">
+            {lastSync ? (
+              <>
+                <span
+                  className={`mr-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    lastSync.status === "success"
+                      ? "bg-green-100 text-green-800"
+                      : lastSync.status === "failed"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {lastSync.status}
+                </span>
+                Last roster sync:{" "}
+                {new Date(lastSync.started_at).toLocaleString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}{" "}
+                · by {lastSync.triggered_by}
+                {lastSync.status === "success" && (
+                  <>
+                    {" "}
+                    · {lastSync.roster_rows} rows — {lastSync.students_added} added,{" "}
+                    {lastSync.students_updated} updated, {lastSync.students_deactivated}{" "}
+                    left, {lastSync.phones_updated} phone changes
+                  </>
+                )}
+                {lastSync.error && (
+                  <span className="text-red-600"> · {lastSync.error}</span>
+                )}
+              </>
+            ) : (
+              "Roster has never been synced — nightly sync runs at 2:00 AM IST."
+            )}
+          </div>
+          <SyncButton />
         </div>
       </section>
 
