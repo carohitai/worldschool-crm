@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DISPOSITION_LABELS, type CallStatus, type CallSentiment } from "@/lib/types";
+import { DialButton } from "../../today/dial-button";
+
+const LINKUS_ENABLED = process.env.NEXT_PUBLIC_LINKUS === "1";
 
 interface FamilyDetail {
   id: string;
@@ -93,15 +96,23 @@ export default async function FamilyPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          {family.family_name}
-        </h1>
-        <p className="text-sm text-slate-500">
-          {family.primary_phone && `📞 ${family.primary_phone}`}
-          {family.whatsapp_number && ` · WhatsApp ${family.whatsapp_number}`}
-        </p>
+        <div className="dc-overline" style={{ fontSize: 12 }}>Family record</div>
+        <h1 className="dc-h1 mt-1.5">{family.family_name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+          {family.primary_phone && (
+            <a href={`tel:${family.primary_phone}`} className="font-semibold" style={{ color: "var(--teal-700)" }}>
+              📞 {family.primary_phone}
+            </a>
+          )}
+          {LINKUS_ENABLED && family.primary_phone && (
+            <DialButton familyId={family.id} />
+          )}
+          {family.whatsapp_number && (
+            <span style={{ color: "var(--fg-subtle)" }}>WhatsApp {family.whatsapp_number}</span>
+          )}
+        </div>
         {family.address && (
-          <p className="mt-1 text-sm text-slate-500">{family.address}</p>
+          <p className="mt-1 text-sm" style={{ color: "var(--fg-subtle)" }}>{family.address}</p>
         )}
       </div>
 

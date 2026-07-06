@@ -1,11 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentStaff } from "@/lib/staff";
+import { DialButton } from "../today/dial-button";
+
+const LINKUS_ENABLED = process.env.NEXT_PUBLIC_LINKUS === "1";
+const SPIRAL =
+  "M100 100 a5 5 0 0 1 10 0 a10 10 0 0 1 -20 0 a15 15 0 0 1 30 0 a20 20 0 0 1 -40 0 a25 25 0 0 1 50 0 a30 30 0 0 1 -60 0 a35 35 0 0 1 70 0 a40 40 0 0 1 -80 0";
 
 interface FamilyRow {
   id: string;
   family_name: string;
   primary_phone: string | null;
-  whatsapp_number: string | null;
+  whatsapp_opt_in: boolean;
   students: { name: string; class: { name: string; section: string } | null }[];
 }
 
@@ -14,13 +21,15 @@ export default async function FamiliesPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  const staff = await getCurrentStaff();
+  if (!staff) redirect("/unregistered");
   const { q } = await searchParams;
   const supabase = await createClient();
 
   let query = supabase
     .from("families")
     .select(
-      "id, family_name, primary_phone, whatsapp_number, students(name, class:classes(name, section))"
+      "id, family_name, primary_phone, whatsapp_opt_in, students(name, class:classes(name, section))"
     )
     .order("family_name")
     .limit(100);
@@ -31,69 +40,73 @@ export default async function FamiliesPage({
   const families = (data ?? []) as unknown as FamilyRow[];
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-slate-900">Families</h1>
+    <div className="relative flex flex-col gap-8">
+      <svg viewBox="0 0 200 200" width="360" height="360" aria-hidden className="pointer-events-none absolute" style={{ top: -140, right: -100, opacity: 0.1, animation: "swirlSpin 100s linear infinite" }}>
+        <path d={SPIRAL} fill="none" stroke="var(--brass-500)" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+
+      <div className="dc-rise flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="dc-overline" style={{ fontSize: 12 }}>Family directory</div>
+          <h1 className="dc-h1 mt-1.5">Parents</h1>
+          <p className="mt-1.5 text-sm" style={{ color: "var(--fg-subtle)" }}>
+            Every family, their wards and contact numbers
+          </p>
+        </div>
         <form className="flex gap-2">
           <input
             type="text"
             name="q"
             defaultValue={q ?? ""}
             placeholder="Search name or phone…"
-            className="w-64 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-64 rounded-lg px-3 py-2 text-sm"
+            style={{ border: "1px solid var(--rule)", background: "var(--bg-elevated)", color: "var(--fg)" }}
           />
-          <button className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-            Search
-          </button>
+          <button className="dc-btn-primary">Search</button>
         </form>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-2">Family</th>
-              <th className="px-4 py-2">Students</th>
-              <th className="px-4 py-2">Phone</th>
-              <th className="px-4 py-2">WhatsApp</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {families.map((f) => (
-              <tr key={f.id} className="hover:bg-slate-50">
-                <td className="px-4 py-2">
-                  <Link
-                    href={`/families/${f.id}`}
-                    className="font-medium text-indigo-700 hover:underline"
-                  >
-                    {f.family_name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 text-slate-600">
-                  {f.students
-                    .map(
-                      (s) =>
-                        `${s.name}${s.class ? ` (${s.class.name}-${s.class.section})` : ""}`
-                    )
-                    .join(", ")}
-                </td>
-                <td className="px-4 py-2 text-slate-600">
-                  {f.primary_phone ?? "—"}
-                </td>
-                <td className="px-4 py-2 text-slate-600">
-                  {f.whatsapp_number ?? "—"}
-                </td>
-              </tr>
-            ))}
-            {families.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
-                  No families found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="dc-card overflow-x-auto">
+        <div style={{ minWidth: 760 }}>
+          <div className="dc-thead grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "1.4fr 1.8fr 1.6fr 0.8fr", background: "var(--bg-sunken)", borderBottom: "1px solid var(--rule)" }}>
+            <span>Family</span>
+            <span>Students</span>
+            <span>Phone · Call</span>
+            <span>WhatsApp</span>
+          </div>
+          {families.map((f) => (
+            <div key={f.id} className="grid items-center gap-3 px-6 py-3 text-sm" style={{ gridTemplateColumns: "1.4fr 1.8fr 1.6fr 0.8fr", borderBottom: "1px solid var(--paper-2)" }}>
+              <Link href={`/families/${f.id}`} className="font-semibold" style={{ color: "var(--teal-700)" }}>
+                {f.family_name}
+              </Link>
+              <span style={{ color: "var(--fg-muted)" }}>
+                {f.students
+                  .map((s) => `${s.name}${s.class ? ` (${s.class.name}-${s.class.section})` : ""}`)
+                  .join(", ")}
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                {f.primary_phone ? (
+                  <>
+                    <a href={`tel:${f.primary_phone}`} className="font-semibold" style={{ color: "var(--teal-700)" }}>
+                      📞 {f.primary_phone}
+                    </a>
+                    {LINKUS_ENABLED && <DialButton familyId={f.id} />}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
+              <span className={`dc-chip ${f.whatsapp_opt_in ? "dc-chip-olive" : "dc-chip-paper"}`}>
+                {f.whatsapp_opt_in ? "opted in" : "no opt-in"}
+              </span>
+            </div>
+          ))}
+          {families.length === 0 && (
+            <p className="px-6 py-8 text-center text-sm" style={{ color: "var(--fg-subtle)" }}>
+              No families found.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
