@@ -312,6 +312,31 @@ export async function updateCallingAvailability(
   return { ok: true };
 }
 
+/**
+ * Front office / leadership: record a family's signed consents from the
+ * registration-form declaration (WhatsApp opt-in, call-recording consent).
+ */
+export async function updateFamilyConsent(
+  familyId: string,
+  field: "whatsapp_opt_in" | "recording_consent",
+  value: boolean
+) {
+  const staff = await getCurrentStaff();
+  if (!staff) throw new Error("No staff record for this login.");
+  if (!["admin", "coordinator", "front_office"].includes(staff.role)) {
+    throw new Error("Only the office or leadership can update consents.");
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("families")
+    .update({ [field]: value })
+    .eq("id", familyId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/families");
+  revalidatePath(`/families/${familyId}`);
+  return { ok: true };
+}
+
 export async function logCall(formData: FormData) {
   const staff = await getCurrentStaff();
   if (!staff) throw new Error("No staff record for this login.");

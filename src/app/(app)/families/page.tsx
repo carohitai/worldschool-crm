@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentStaff } from "@/lib/staff";
 import { DialButton } from "../today/dial-button";
+import { ConsentToggle } from "./consent-toggle";
 
 const LINKUS_ENABLED = process.env.NEXT_PUBLIC_LINKUS === "1";
 const SPIRAL =
@@ -13,6 +14,7 @@ interface FamilyRow {
   family_name: string;
   primary_phone: string | null;
   whatsapp_opt_in: boolean;
+  recording_consent: boolean;
   students: { name: string; class: { name: string; section: string } | null }[];
 }
 
@@ -29,7 +31,7 @@ export default async function FamiliesPage({
   let query = supabase
     .from("families")
     .select(
-      "id, family_name, primary_phone, whatsapp_opt_in, students(name, class:classes(name, section))"
+      "id, family_name, primary_phone, whatsapp_opt_in, recording_consent, students(name, class:classes(name, section))"
     )
     .order("family_name")
     .limit(100);
@@ -38,6 +40,7 @@ export default async function FamiliesPage({
   }
   const { data } = await query;
   const families = (data ?? []) as unknown as FamilyRow[];
+  const canEditConsent = ["admin", "coordinator", "front_office"].includes(staff.role);
 
   return (
     <div className="relative flex flex-col gap-8">
@@ -68,14 +71,15 @@ export default async function FamiliesPage({
 
       <div className="dc-card overflow-x-auto">
         <div style={{ minWidth: 760 }}>
-          <div className="dc-thead grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "1.4fr 1.8fr 1.6fr 0.8fr", background: "var(--bg-sunken)", borderBottom: "1px solid var(--rule)" }}>
+          <div className="dc-thead grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "1.3fr 1.7fr 1.5fr 0.9fr 0.9fr", background: "var(--bg-sunken)", borderBottom: "1px solid var(--rule)" }}>
             <span>Family</span>
             <span>Students</span>
             <span>Phone · Call</span>
-            <span>WhatsApp</span>
+            <span>WhatsApp opt-in</span>
+            <span>Recording consent</span>
           </div>
           {families.map((f) => (
-            <div key={f.id} className="grid items-center gap-3 px-6 py-3 text-sm" style={{ gridTemplateColumns: "1.4fr 1.8fr 1.6fr 0.8fr", borderBottom: "1px solid var(--paper-2)" }}>
+            <div key={f.id} className="grid items-center gap-3 px-6 py-3 text-sm" style={{ gridTemplateColumns: "1.3fr 1.7fr 1.5fr 0.9fr 0.9fr", borderBottom: "1px solid var(--paper-2)" }}>
               <Link href={`/families/${f.id}`} className="font-semibold" style={{ color: "var(--teal-700)" }}>
                 {f.family_name}
               </Link>
@@ -96,8 +100,23 @@ export default async function FamiliesPage({
                   "—"
                 )}
               </span>
-              <span className={`dc-chip ${f.whatsapp_opt_in ? "dc-chip-olive" : "dc-chip-paper"}`}>
-                {f.whatsapp_opt_in ? "opted in" : "no opt-in"}
+              <span>
+                <ConsentToggle
+                  familyId={f.id}
+                  field="whatsapp_opt_in"
+                  value={f.whatsapp_opt_in}
+                  labels={{ on: "opted in", off: "no opt-in" }}
+                  canEdit={canEditConsent}
+                />
+              </span>
+              <span>
+                <ConsentToggle
+                  familyId={f.id}
+                  field="recording_consent"
+                  value={f.recording_consent}
+                  labels={{ on: "consented", off: "no consent" }}
+                  canEdit={canEditConsent}
+                />
               </span>
             </div>
           ))}

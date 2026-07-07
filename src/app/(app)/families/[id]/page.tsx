@@ -1,7 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentStaff } from "@/lib/staff";
 import { DISPOSITION_LABELS, type CallStatus, type CallSentiment } from "@/lib/types";
 import { DialButton } from "../../today/dial-button";
+import { ConsentToggle } from "../consent-toggle";
 
 const LINKUS_ENABLED = process.env.NEXT_PUBLIC_LINKUS === "1";
 
@@ -10,6 +12,8 @@ interface FamilyDetail {
   family_name: string;
   primary_phone: string | null;
   whatsapp_number: string | null;
+  whatsapp_opt_in: boolean;
+  recording_consent: boolean;
   address: string | null;
   notes: string | null;
   parents: { id: string; name: string; relation: string | null; phone: string | null }[];
@@ -58,13 +62,15 @@ export default async function FamilyPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const staff = await getCurrentStaff();
+  if (!staff) redirect("/unregistered");
   const supabase = await createClient();
 
   const [familyRes, logsRes, actionsRes, messagesRes] = await Promise.all([
     supabase
       .from("families")
       .select(
-        "id, family_name, primary_phone, whatsapp_number, address, notes, parents(id, name, relation, phone), students(id, name, admission_no, priority_flag, priority_reason, class:classes(name, section))"
+        "id, family_name, primary_phone, whatsapp_number, whatsapp_opt_in, recording_consent, address, notes, parents(id, name, relation, phone), students(id, name, admission_no, priority_flag, priority_reason, class:classes(name, section))"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -110,6 +116,26 @@ export default async function FamilyPage({
           {family.whatsapp_number && (
             <span style={{ color: "var(--fg-subtle)" }}>WhatsApp {family.whatsapp_number}</span>
           )}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="dc-thead" style={{ letterSpacing: "0.1em" }}>WhatsApp:</span>
+            <ConsentToggle
+              familyId={family.id}
+              field="whatsapp_opt_in"
+              value={family.whatsapp_opt_in}
+              labels={{ on: "opted in", off: "no opt-in" }}
+              canEdit={["admin", "coordinator", "front_office"].includes(staff.role)}
+            />
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="dc-thead" style={{ letterSpacing: "0.1em" }}>Recording:</span>
+            <ConsentToggle
+              familyId={family.id}
+              field="recording_consent"
+              value={family.recording_consent}
+              labels={{ on: "consented", off: "no consent" }}
+              canEdit={["admin", "coordinator", "front_office"].includes(staff.role)}
+            />
+          </span>
         </div>
         {family.address && (
           <p className="mt-1 text-sm" style={{ color: "var(--fg-subtle)" }}>{family.address}</p>
