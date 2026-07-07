@@ -115,6 +115,8 @@ export default async function HistoryPage() {
         start,
         externalNum: partyNum(external),
         externalName: partyName(external),
+        internalExt: partyNum(internal),
+        internalName: partyName(internal),
         callerName: staffByExt.get(partyNum(internal)) ?? null,
         familyName: famByPhone.get(last10(external)) ?? null,
       };
@@ -166,7 +168,7 @@ export default async function HistoryPage() {
                 <span>Date</span>
                 <span>Parent / Contact</span>
                 <span>Number</span>
-                <span>Called by</span>
+                <span>Called by (Ext.)</span>
                 <span>Start</span>
                 <span>End</span>
                 <span>Duration</span>
@@ -186,7 +188,14 @@ export default async function HistoryPage() {
                       {!r.isOutbound && <span className="dc-chip dc-chip-teal ml-2">in</span>}
                     </span>
                     <span style={{ color: "var(--fg-muted)" }}>{r.externalNum || "—"}</span>
-                    <span style={{ color: "var(--fg-muted)" }}>{r.callerName ?? "—"}</span>
+                    <span style={{ color: "var(--fg-muted)" }}>
+                      {r.callerName ?? r.internalName ?? "—"}
+                      {r.internalExt && (
+                        <span className="dc-chip dc-chip-teal ml-1.5" style={{ fontSize: 11 }}>
+                          {r.internalExt}
+                        </span>
+                      )}
+                    </span>
                     <span style={{ color: "var(--fg-subtle)" }}>{fmtTime(r.start)}</span>
                     <span style={{ color: "var(--fg-subtle)" }}>{end}</span>
                     <span style={{ color: "var(--fg-subtle)" }}>{fmtDuration(r.talkSec || r.durationSec)}</span>
