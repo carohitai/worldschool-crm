@@ -11,6 +11,8 @@ export interface Staff {
   role: StaffRole;
   linkus_extension: string | null;
   active: boolean;
+  available_for_calling: boolean;
+  calling_remarks: string | null;
 }
 
 export const CALL_TOPICS = [

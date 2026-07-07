@@ -17,6 +17,7 @@ const NAV = [
   { href: "/history", label: "History", roles: null, icon: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5M12 7v5l4 2" },
   { href: "/feedback", label: "Feedback", roles: null, icon: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z" },
   { href: "/families", label: "Parent", roles: null, icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
+  { href: "/teachers", label: "Teachers", roles: ["admin", "coordinator"], icon: "M12 3 1 9l11 6 9-4.91V17h2V9zM5 13.18v4L12 21l7-3.82v-4L12 17z" },
 ];
 
 export function Shell({ staff, children }: ShellProps) {

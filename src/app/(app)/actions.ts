@@ -27,6 +27,12 @@ const DAILY_TARGET_COUNT = 5;
 export async function generateTodayTargets() {
   const staff = await getCurrentStaff();
   if (!staff) throw new Error("No staff record for this login.");
+  if (!staff.available_for_calling) {
+    return {
+      created: 0,
+      message: "You are not marked available for parent calling — please speak to the Principal's office.",
+    };
+  }
   const supabase = await createClient();
   const today = todayIST();
   const weekday = weekdayIST();
@@ -161,14 +167,20 @@ export async function assignAllTodayTargets() {
   const today = todayIST();
   const weekday = weekdayIST();
 
-  const { data: planRows } = await supabase
-    .from("call_plan")
-    .select("family_id, student_id, staff_id")
-    .eq("weekday", weekday)
-    .not("staff_id", "is", null);
+  const [{ data: planRows }, { data: unavailable }] = await Promise.all([
+    supabase
+      .from("call_plan")
+      .select("family_id, student_id, staff_id")
+      .eq("weekday", weekday)
+      .not("staff_id", "is", null),
+    supabase.from("staff").select("id").eq("available_for_calling", false),
+  ]);
   if (!planRows || planRows.length === 0) {
     return { created: 0, message: `No planned calls for ${weekday}.` };
   }
+  const blocked = new Set((unavailable ?? []).map((s) => s.id));
+  const allowedRows = planRows.filter((p) => !blocked.has(p.staff_id));
+  const skippedForRights = planRows.length - allowedRows.length;
 
   const { data: existing } = await supabase
     .from("call_targets")
@@ -179,7 +191,7 @@ export async function assignAllTodayTargets() {
   );
 
   const seen = new Set<string>();
-  const rows = planRows
+  const rows = allowedRows
     .filter((p) => {
       const key = `${p.staff_id}|${p.family_id}`;
       if (already.has(key) || seen.has(key)) return false;
@@ -193,8 +205,9 @@ export async function assignAllTodayTargets() {
       student_id: p.student_id,
     }));
 
+  const skippedNote = skippedForRights > 0 ? ` (${skippedForRights} skipped — teachers without calling rights)` : "";
   if (rows.length === 0) {
-    return { created: 0, message: "Today's plan is already assigned to all teachers." };
+    return { created: 0, message: `Today's plan is already assigned to all eligible teachers.${skippedNote}` };
   }
   for (let i = 0; i < rows.length; i += 200) {
     const { error } = await supabase
@@ -207,7 +220,7 @@ export async function assignAllTodayTargets() {
   revalidatePath("/today");
   return {
     created: rows.length,
-    message: `Assigned ${rows.length} calls across the team for ${weekday}.`,
+    message: `Assigned ${rows.length} calls across the team for ${weekday}.${skippedNote}`,
   };
 }
 
@@ -273,6 +286,30 @@ export async function syncRosterNow() {
       (result.skippedNoMobile ? `, ${result.skippedNoMobile} skipped (no mobile)` : "") +
       ".",
   };
+}
+
+/**
+ * Principal/leadership: set whether a teacher is available for parent
+ * calling. Unavailable teachers are skipped when the daily plan is assigned.
+ */
+export async function updateCallingAvailability(
+  staffId: string,
+  available: boolean
+) {
+  const staff = await getCurrentStaff();
+  if (!staff) throw new Error("No staff record for this login.");
+  if (staff.role !== "admin" && staff.role !== "coordinator") {
+    throw new Error("Only the Principal, coordinators or admins can change calling rights.");
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("staff")
+    .update({ available_for_calling: available })
+    .eq("id", staffId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/teachers");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 export async function logCall(formData: FormData) {
