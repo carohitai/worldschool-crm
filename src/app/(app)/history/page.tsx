@@ -85,16 +85,44 @@ export default async function HistoryPage() {
       )
       .order("started_at", { ascending: false })
       .limit(500),
-    supabase.from("families").select("family_name, primary_phone"),
+    supabase
+      .from("families")
+      .select("family_name, primary_phone, students(name, status, class:classes(name, section))"),
     supabase.from("staff").select("name, linkus_extension").not("linkus_extension", "is", null),
     linkusConfigured() ? searchCdr(200) : Promise.resolve({ ok: false, records: [], error: "Linkus is not configured yet." }),
   ]);
 
   const logs = (logsRes.data ?? []) as unknown as HistLog[];
-  const famByPhone = new Map(
-    (familiesRes.data ?? [])
+  interface FamInfo {
+    name: string;
+    students: string;
+    standard: string;
+  }
+  const famByPhone = new Map<string, FamInfo>(
+    (
+      (familiesRes.data ?? []) as unknown as {
+        family_name: string;
+        primary_phone: string | null;
+        students: { name: string; status: string; class: { name: string; section: string } | null }[];
+      }[]
+    )
       .filter((f) => f.primary_phone)
-      .map((f) => [last10(f.primary_phone!), f.family_name])
+      .map((f) => {
+        const kids = (f.students ?? []).filter((s) => s.status === "active");
+        const standards = [
+          ...new Set(
+            kids.map((s) => (s.class ? `${s.class.name}-${s.class.section}` : "—"))
+          ),
+        ];
+        return [
+          last10(f.primary_phone!),
+          {
+            name: f.family_name,
+            students: kids.map((s) => s.name).join(", "),
+            standard: standards.join(", "),
+          },
+        ];
+      })
   );
   const staffByExt = new Map(
     (staffRes.data ?? []).map((s) => [s.linkus_extension as string, s.name])
@@ -118,7 +146,9 @@ export default async function HistoryPage() {
         internalExt: partyNum(internal),
         internalName: partyName(internal),
         callerName: staffByExt.get(partyNum(internal)) ?? null,
-        familyName: famByPhone.get(last10(external)) ?? null,
+        familyName: famByPhone.get(last10(external))?.name ?? null,
+        studentNames: famByPhone.get(last10(external))?.students ?? "",
+        standard: famByPhone.get(last10(external))?.standard ?? "",
       };
     })
     .filter((r) => !/internal/i.test(r.type) && (r.callerName || r.familyName))
@@ -163,10 +193,12 @@ export default async function HistoryPage() {
         )}
         {cdr.ok && (
           <div className="dc-card mt-4 overflow-x-auto">
-            <div style={{ minWidth: 920 }}>
-              <div className="dc-thead grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "1fr 1.6fr 1.1fr 1.2fr 0.8fr 0.8fr 0.8fr 0.9fr", background: "var(--bg-sunken)", borderBottom: "1px solid var(--rule)" }}>
+            <div style={{ minWidth: 1150 }}>
+              <div className="dc-thead grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "1fr 1.5fr 1.5fr 0.8fr 1.1fr 1.2fr 0.7fr 0.7fr 0.8fr 0.9fr", background: "var(--bg-sunken)", borderBottom: "1px solid var(--rule)" }}>
                 <span>Date</span>
                 <span>Parent / Contact</span>
+                <span>Student</span>
+                <span>Standard</span>
                 <span>Number</span>
                 <span>Called by (Ext.)</span>
                 <span>Start</span>
@@ -181,12 +213,14 @@ export default async function HistoryPage() {
                     ? fmtTime(new Date(r.start.getTime() + r.durationSec * 1000))
                     : "—";
                 return (
-                  <div key={r.id} className="grid items-center gap-3 px-6 py-3 text-sm" style={{ gridTemplateColumns: "1fr 1.6fr 1.1fr 1.2fr 0.8fr 0.8fr 0.8fr 0.9fr", borderBottom: "1px solid var(--paper-2)" }}>
+                  <div key={r.id} className="grid items-center gap-3 px-6 py-3 text-sm" style={{ gridTemplateColumns: "1fr 1.5fr 1.5fr 0.8fr 1.1fr 1.2fr 0.7fr 0.7fr 0.8fr 0.9fr", borderBottom: "1px solid var(--paper-2)" }}>
                     <span style={{ color: "var(--fg-muted)" }}>{fmtDate(r.start)}</span>
                     <span className="font-semibold" style={{ color: r.familyName ? "var(--brand-ink)" : "var(--fg-subtle)" }}>
-                      {r.familyName ?? r.externalName ?? "Unknown"}
+                      {r.familyName ?? (r.externalName || "Unknown")}
                       {!r.isOutbound && <span className="dc-chip dc-chip-teal ml-2">in</span>}
                     </span>
+                    <span style={{ color: "var(--fg-muted)" }}>{r.studentNames || "—"}</span>
+                    <span className="font-semibold" style={{ color: "var(--brand-ink)" }}>{r.standard || "—"}</span>
                     <span style={{ color: "var(--fg-muted)" }}>{r.externalNum || "—"}</span>
                     <span style={{ color: "var(--fg-muted)" }}>
                       {r.callerName ?? r.internalName ?? "—"}
