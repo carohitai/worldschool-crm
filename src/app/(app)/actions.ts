@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentStaff, todayIST, weekdayIST } from "@/lib/staff";
-import { dial, linkusConfigured } from "@/lib/integrations/linkus";
+import { dial, linkusConfigured, listExtensions } from "@/lib/integrations/linkus";
 import {
   nextelConfigured,
   sendMissedCallMessage,
@@ -253,6 +253,102 @@ export async function dialViaLinkus(familyId: string) {
   return result.ok
     ? { ok: true, message: "Ringing your Linkus — answer to connect the parent." }
     : { ok: false, message: result.error ?? "Dial failed." };
+}
+
+/**
+ * Reconcile Parent Connect staff extensions with the live PBX (admin/
+ * coordinator only). Reads the Linkus/Yeastar extension list and updates
+ * each staff member's `linkus_extension` where it can be matched by email.
+ * Never guesses on a name alone — anything it cannot match confidently is
+ * reported back so the office can map it by hand.
+ */
+export async function syncLinkusExtensions() {
+  const staff = await getCurrentStaff();
+  if (!staff) throw new Error("No staff record for this login.");
+  if (staff.role !== "admin" && staff.role !== "coordinator") {
+    throw new Error("Only coordinators or admins can sync Linkus extensions.");
+  }
+  if (!linkusConfigured()) {
+    return { ok: false, message: "Linkus is not connected yet." };
+  }
+
+  const { ok, extensions, error } = await listExtensions();
+  if (!ok) return { ok: false, message: error ?? "Could not read PBX extensions." };
+
+  const supabase = await createClient();
+  const { data: staffRows } = await supabase
+    .from("staff")
+    .select("id, name, email, linkus_extension")
+    .eq("active", true);
+  const rows = staffRows ?? [];
+
+  const staffByEmail = new Map(
+    rows.filter((s) => s.email).map((s) => [s.email.toLowerCase(), s])
+  );
+  const usedExtensions = new Map<string, string>(); // number -> staff id currently holding it
+  for (const s of rows) {
+    if (s.linkus_extension) usedExtensions.set(s.linkus_extension, s.id);
+  }
+
+  let updated = 0;
+  let unchanged = 0;
+  const changes: string[] = [];
+  const conflicts: string[] = [];
+  const unmatchedExt: string[] = [];
+  const matchedStaff = new Set<string>();
+
+  for (const ext of extensions) {
+    const match = ext.email ? staffByEmail.get(ext.email) : undefined;
+    if (!match) {
+      unmatchedExt.push(`${ext.number}${ext.name ? ` (${ext.name})` : ""}`);
+      continue;
+    }
+    matchedStaff.add(match.id);
+    if (match.linkus_extension === ext.number) {
+      unchanged += 1;
+      continue;
+    }
+    const holder = usedExtensions.get(ext.number);
+    if (holder && holder !== match.id) {
+      conflicts.push(`${ext.number} → ${match.name} (already on another staff record)`);
+      continue;
+    }
+    const { error: upErr } = await supabase
+      .from("staff")
+      .update({ linkus_extension: ext.number })
+      .eq("id", match.id);
+    if (upErr) {
+      conflicts.push(`${match.name}: ${upErr.message}`);
+      continue;
+    }
+    usedExtensions.set(ext.number, match.id);
+    changes.push(`${match.name} → ${ext.number}`);
+    updated += 1;
+  }
+
+  const stillMissing = rows.filter(
+    (s) => !s.linkus_extension && !matchedStaff.has(s.id)
+  ).length;
+
+  revalidatePath("/teachers");
+  revalidatePath("/today");
+
+  const parts = [
+    `${extensions.length} PBX extensions read`,
+    `${updated} updated`,
+    `${unchanged} already correct`,
+  ];
+  if (conflicts.length) parts.push(`${conflicts.length} conflicts`);
+  if (unmatchedExt.length) parts.push(`${unmatchedExt.length} PBX extensions had no matching staff email`);
+  if (stillMissing) parts.push(`${stillMissing} active staff still without an extension`);
+
+  return {
+    ok: true,
+    message: parts.join(" · ") + ".",
+    changes,
+    conflicts,
+    unmatchedExt,
+  };
 }
 
 /**

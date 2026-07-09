@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentStaff } from "@/lib/staff";
 import { AvailabilitySelect } from "./availability-select";
+import { SyncLinkusButton } from "./sync-linkus-button";
 
 const SPIRAL =
   "M100 100 a5 5 0 0 1 10 0 a10 10 0 0 1 -20 0 a15 15 0 0 1 30 0 a20 20 0 0 1 -40 0 a25 25 0 0 1 50 0 a30 30 0 0 1 -60 0 a35 35 0 0 1 70 0 a40 40 0 0 1 -80 0";
@@ -72,6 +73,7 @@ export default async function TeachersPage() {
             {`Calling rights as decided by the Principal · ${availableCount} of ${teachers.length} teachers available for calling`}
           </p>
         </div>
+        <SyncLinkusButton />
       </div>
 
       <section>
