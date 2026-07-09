@@ -110,6 +110,74 @@ export async function searchCdr(maxRecords = 200): Promise<{
   }
 }
 
+export interface LinkusExtension {
+  number: string; // the extension number, e.g. "2031"
+  name: string; // caller-ID / full name on the PBX
+  email: string; // extension email (used to match staff)
+  mobile: string; // mobile number registered on the extension
+}
+
+/**
+ * List the extensions (users) configured on the PBX. Field names differ
+ * across P-Series firmware, so every value is read defensively. Paginates
+ * until the PBX reports no more rows.
+ */
+export async function listExtensions(): Promise<{
+  ok: boolean;
+  extensions: LinkusExtension[];
+  error?: string;
+}> {
+  if (!linkusConfigured()) {
+    return { ok: false, extensions: [], error: "Linkus is not configured yet." };
+  }
+  try {
+    const token = await getToken();
+    const pageSize = 100;
+    const extensions: LinkusExtension[] = [];
+    let page = 1;
+    // Cap pages defensively so a firmware that ignores paging can't loop forever.
+    while (page <= 50) {
+      const res = await fetch(
+        `${BASE}/extension/list?access_token=${token}&page=${page}&page_size=${pageSize}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data.errcode !== 0) {
+        return {
+          ok: false,
+          extensions,
+          error: data.errmsg ?? `Extension list error ${data.errcode}`,
+        };
+      }
+      const rows: Record<string, unknown>[] =
+        data.data ?? data.ext_list ?? data.extension_list ?? [];
+      for (const r of rows) {
+        const first = String(r.first_name ?? "").trim();
+        const last = String(r.last_name ?? "").trim();
+        const name =
+          String(r.caller_id_name ?? r.name ?? "").trim() ||
+          `${first} ${last}`.trim();
+        extensions.push({
+          number: String(r.number ?? r.ext_number ?? r.extension ?? "").trim(),
+          name,
+          email: String(r.email ?? r.email_address ?? "").trim().toLowerCase(),
+          mobile: String(r.mobile_number ?? r.mobile ?? "").trim(),
+        });
+      }
+      const total = Number(data.total_number ?? data.total ?? rows.length);
+      if (rows.length < pageSize || extensions.length >= total) break;
+      page += 1;
+    }
+    return { ok: true, extensions: extensions.filter((e) => e.number) };
+  } catch (e) {
+    return {
+      ok: false,
+      extensions: [],
+      error: e instanceof Error ? e.message : "Extension list fetch failed",
+    };
+  }
+}
+
 export async function dial(
   extension: string,
   number: string
